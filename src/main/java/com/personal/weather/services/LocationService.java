@@ -1,31 +1,39 @@
 package com.personal.weather.services;
 
-import com.personal.weather.dto.*;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
-
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+
+import com.personal.weather.clients.NominatimClient;
+import com.personal.weather.clients.OpenMeteoClient;
+import com.personal.weather.dto.ExtendedWeatherDTO;
+import com.personal.weather.dto.NominatimResponseDTO;
+import com.personal.weather.dto.OpenMeteoClimateResponseDTO;
+import com.personal.weather.dto.OpenMeteoResponseDTO;
+import com.personal.weather.dto.SimpleWeatherDTO;
+import com.personal.weather.dto.WeatherResponse;
+
+import jakarta.servlet.http.HttpServletResponse;
+
 @Service
 public class LocationService {
 
+    private static final String CURRENT_FIELDS = "temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m";
+    private static final String DAILY_FIELDS = "temperature_2m_min,temperature_2m_max";
+
     @Autowired
-    RestClient restClient;
+    private NominatimClient nominatimClient;
+
+    @Autowired
+    private OpenMeteoClient openMeteoClient;
 
     private List<NominatimResponseDTO> getGeolocationByZipCode(String zipCode) {
         try {
-            List<NominatimResponseDTO> nominatimResponse = restClient
-                    .get()
-                    .uri("https://nominatim.openstreetmap.org/search?&postalcode=" + zipCode + "&format=json")
-                    .retrieve()
-                    .body(new ParameterizedTypeReference<List<NominatimResponseDTO>>() {
-                    });
+            List<NominatimResponseDTO> nominatimResponse = nominatimClient.search(zipCode, "json");
 
             return nominatimResponse;
         } catch (Exception e) {
@@ -35,19 +43,7 @@ public class LocationService {
 
     private OpenMeteoResponseDTO getCurrentTemperatureByGeolocationCoordinates(String latitude, String longitude) {
         try {
-            return restClient
-                    .get()
-                    .uri(uriBuilder -> uriBuilder
-                            .scheme("http")
-                            .host("api.open-meteo.com")
-                            .path("/v1/forecast")
-                            .queryParam("latitude", latitude)
-                            .queryParam("longitude", longitude)
-                            .queryParam("current", "temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m")
-                            .build())
-                    .retrieve()
-                    .body(new ParameterizedTypeReference<OpenMeteoResponseDTO>() {
-                    });
+            return openMeteoClient.getCurrentWeather(latitude, longitude, CURRENT_FIELDS);
         } catch (Exception e) {
             System.out.println(e.getMessage());
             throw new RuntimeException("OPEN_METEO_API_FAILED");
@@ -58,21 +54,8 @@ public class LocationService {
         String today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
 
         try {
-            return restClient
-                    .get()
-                    .uri(uriBuilder -> uriBuilder
-                            .scheme("http")
-                            .host("api.open-meteo.com")
-                            .path("/v1/forecast")
-                            .queryParam("latitude", latitude)
-                            .queryParam("longitude", longitude)
-                            .queryParam("start_date", today)
-                            .queryParam("end_date", today)
-                            .queryParam("daily", "temperature_2m_min,temperature_2m_max")
-                            .build())
-                    .retrieve()
-                    .body(new ParameterizedTypeReference<OpenMeteoClimateResponseDTO>() {
-                    });
+            return openMeteoClient.getDailyForecast(latitude, longitude, today, today, DAILY_FIELDS);
+            
         } catch (Exception e) {
             System.out.println(e.getMessage());
             throw new RuntimeException("OPEN_METEO_API_FAILED");
